@@ -1,12 +1,14 @@
 require('dotenv').config();
+var path = require('path');
 const express = require('express');
 const request = require('request-promise-native');
 const NodeCache = require('node-cache');
 const session = require('express-session');
 const opn = require('open');
 const app = express();
+const apiRouter = require("./routes/api.routes");
 
-const PORT = 3000;
+const PORT = 3004;
 
 const refreshTokenStore = {};
 const accessTokenCache = new NodeCache({ deleteOnExpire: true });
@@ -39,6 +41,10 @@ if (process.env.SCOPE) {
 const REDIRECT_URI = `http://localhost:${PORT}/oauth-callback`;
 
 //===========================================================================//
+
+app.set("views", path.join(__dirname, "views"));
+app.set("view engine", "ejs");
+app.use(express.static(path.join(__dirname, "public")));
 
 // Use a session to keep track of client ID
 app.use(session({
@@ -195,13 +201,14 @@ const displayContactName = (res, contact) => {
   res.write(`<p>Contact name: ${firstname.value} ${lastname.value}</p>`);
 };
 
-app.get('/', async (req, res) => {
+app.get('/', async (req, res, next) => {
   res.setHeader('Content-Type', 'text/html');
   res.write(`<h2>HubSpot OAuth 2.0 Quickstart App</h2>`);
   if (isAuthorized(req.sessionID)) {
     const accessToken = await getAccessToken(req.sessionID);
     const contact = await getContact(accessToken);
     res.write(`<h4>Access token: ${accessToken}</h4>`);
+    res.write(`<a href="/products"><h3>Show Products List</h3></a>`);
     displayContactName(res, contact);
   } else {
     res.write(`<a href="/install"><h3>Install the app</h3></a>`);
@@ -209,10 +216,33 @@ app.get('/', async (req, res) => {
   res.end();
 });
 
+app.get('/products', async (req, res, next) => {
+  if (isAuthorized(req.sessionID)) {
+    const accessToken = await getAccessToken(req.sessionID);
+    res.render('products', {accessToken});
+  } else {
+    res.write(`<a href="/install"><h3>Install the app</h3></a>`);
+  }
+  next();
+});
+
 app.get('/error', (req, res) => {
   res.setHeader('Content-Type', 'text/html');
   res.write(`<h4>Error: ${req.query.msg}</h4>`);
   res.end();
+});
+
+app.use("/api/v1", apiRouter);
+
+app.use(function (err, req, res, next) {
+  console.log('ERROR DETECTED =======>', err);
+  res.status(err.status || 500);
+  res.json({
+    message: err.message,
+    success: false,
+    data: err.data,
+    error: err
+  });
 });
 
 app.listen(PORT, () => console.log(`=== Starting your app on http://localhost:${PORT} ===`));
